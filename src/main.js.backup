@@ -1,0 +1,1533 @@
+
+import './style.css'
+import { exportBackup, importBackup } from './backup.js'
+import {
+  getDailyTasks,
+  addDailyTask,
+  setDailyTaskCompleted,
+  deleteDailyTask,
+  getDailyCommitmentStats,
+  getDailyScheduleStats,
+} from './daily-schedule.js'
+
+
+import {
+  getStages,
+  saveStages,
+  saveEvidenceFile,
+  approveStageEvidence,
+  canCompleteStage,
+} from './stage-system.js'
+
+const STORAGE_KEY = 'ascend-daily-tasks'
+
+function loadTasks() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+
+    if (!Array.isArray(saved)) return []
+
+    return saved.filter(
+      (task) =>
+        task &&
+        typeof task.id === 'string' &&
+        typeof task.title === 'string' &&
+        typeof task.completed === 'boolean',
+    )
+  } catch {
+    return []
+  }
+}
+
+let tasks = loadTasks()
+
+document.querySelector('#app').innerHTML = `
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard" aria-label="ASCEND الرئيسية">
+        <span class="brand-mark">A</span>
+        <span class="brand-name">ASCEND</span>
+      </a>
+
+      <div class="profile">
+        <div class="profile-avatar">A</div>
+        <div>
+          <strong>رحلة الصعود</strong>
+          <span>نسختك الأفضل تبدأ هنا</span>
+        </div>
+      </div>
+
+      <nav class="navigation" aria-label="القائمة الرئيسية">
+        <p class="nav-label">مساحة العمل</p>
+        <a class="nav-link active" href="#dashboard">
+          <span>◈</span> لوحة التحكم
+        </a>
+        <a class="nav-link" href="#stages">
+          <span>▤</span> المراحل والأهداف
+        </a>
+        <a class="nav-link" href="#tasks">
+          <span>✓</span> المهام
+        </a>
+        <a class="nav-link" href="#rewards">
+          <span>◇</span> المكافآت
+        </a>
+        <a class="nav-link" href="#statistics">
+          <span>↗</span> الإحصائيات
+        </a>
+        <a class="nav-link" href="#achievements">
+  <span class="nav-icon">✓</span>
+  <span>سجل الإنجازات</span>
+</a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <span class="status-dot"></span>
+        <span>كل رحلة عظيمة تبدأ بخطوة</span>
+      </div>
+    </aside>
+
+    <main class="main-content" id="dashboard">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">نظام التطور الشخصي</p>
+          <h1>لوحة التحكم</h1>
+        </div>
+        <div class="topbar-date" id="today-date"></div>
+      </header>
+
+      <section class="welcome">
+        <div class="welcome-copy">
+          <span class="welcome-tag">رحلتك تبدأ الآن</span>
+          <h2>لا تنتظر الفرصة.<br />ابنِ <span>الشخص الذي يصنعها.</span></h2>
+          <p>كل مهمة تنجزها اليوم تقرّبك من الحياة التي تريدها غدًا.</p>
+          <a class="primary-button" href="#tasks">ابدأ العمل <span>←</span></a>
+        </div>
+        <div class="welcome-emblem" aria-hidden="true">
+          <div class="emblem-ring ring-outer"></div>
+          <div class="emblem-ring ring-inner"></div>
+          <div class="emblem-core">A</div>
+          <span class="emblem-caption">DISCIPLINE · GROWTH · LEGACY</span>
+        </div>
+      </section>
+
+      <section class="section-block" id="statistics">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">نظرة عامة</p>
+            <h2>تقدّمك بالأرقام</h2>
+          </div>
+          <span class="muted-label">رحلتك الشخصية</span>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-icon">◎</span>
+            <p>إنجاز المهام</p>
+            
+            <strong id="completed-stat">0 <small>مهمة</small></strong>
+            <span class="stat-note" id="tasks-stat-note">ابدأ بأول إنجاز لك</span>
+            <span class="stat-note" id="total-tasks-stat">إجمالي المهام: 0</span>
+
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">◈</span>
+            <p>المراحل المكتملة</p>
+            <strong id="completed-stages-stat">0 <small>مرحلة</small></strong>
+            <span class="stat-note">كل مرحلة لها دليل إنجاز</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">◇</span>
+            <p>المكافآت المستحقة</p>
+            <strong id="achieved-rewards-stat">0 <small>مكافأة</small></strong>
+            <span class="stat-note">اكسبها بإنجازاتك</span>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">↗</span>
+            <p>الالتزام اليومي</p>
+            <strong id="commitment-days-stat">0 <small>يوم</small></strong>
+            <span class="stat-note">الاستمرارية تصنع الفرق</span>
+          </article>
+        </div>
+      </section>
+
+
+      <section class="panel schedule-panel" id="daily-schedule">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">خطّط لوقتك بوعي</p>
+            <h2>جدولي اليومي</h2>
+          </div>
+          <input
+            type="date"
+            id="schedule-date"
+            aria-label="اختر يوم الجدول"
+          />
+        </div>
+
+        <div class="schedule-summary">
+          <div>
+            <span>المهام</span>
+            <strong id="schedule-task-count">0</strong>
+          </div>
+          <div>
+            <span>الوقت المخطط</span>
+            <strong id="schedule-planned-time">0 د</strong>
+          </div>
+          <div>
+            <span>الإنجاز</span>
+            <strong id="schedule-completion">0%</strong>
+          </div>
+
+<div>
+  <span>المهام المتبقية</span>
+  <strong id="schedule-remaining-count">0</strong>
+</div>
+<div>
+  <span>وقتها المتبقي</span>
+  <strong id="schedule-remaining-time">0 د</strong>
+</div>
+
+        </div>
+
+<div class="daily-progress">
+  <div class="daily-progress-heading">
+    <span>تقدّمك اليوم</span>
+    <strong id="daily-progress-label">0%</strong>
+  </div>
+  <div
+    class="daily-progress-track"
+    id="daily-progress-track"
+    role="progressbar"
+    aria-label="نسبة إنجاز المهام اليومية"
+    aria-valuemin="0"
+    aria-valuemax="100"
+    aria-valuenow="0"
+  >
+    <div class="daily-progress-fill" id="daily-progress-fill"></div>
+  </div>
+</div>
+
+
+        <form class="schedule-form" id="schedule-form">
+          <input
+            id="schedule-task-title"
+            type="text"
+            maxlength="120"
+            placeholder="اسم المهمة..."
+            aria-label="اسم المهمة"
+            required
+          />
+
+          <label>
+            <span>من</span>
+            <input id="schedule-start" type="time" value="08:00" required />
+          </label>
+
+          <label>
+            <span>إلى</span>
+            <input id="schedule-end" type="time" value="09:00" required />
+          </label>
+
+          <button class="primary-button" type="submit">+ إضافة</button>
+        </form>
+
+        <p class="task-feedback" id="schedule-feedback" role="status"></p>
+
+        <div class="schedule-timeline" id="schedule-timeline"></div>
+      </section>
+
+
+      <section class="content-grid">
+       
+<article class="panel current-stage" id="stages">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">المحطة الحالية</p>
+      <h2 id="stage-title">مرحلة التأسيس</h2>
+    </div>
+    <span class="stage-number" id="stage-number">01</span>
+  </div>
+
+  <p class="stage-description" id="stage-description">
+    أنجز المهام المطلوبة وأرفق دليلًا على تقدمك.
+  </p>
+
+  <div class="stage-progress">
+    <div class="progress-label">
+      <span>نسبة إنجاز مهام المرحلة</span>
+      <strong id="stage-progress-percent">0%</strong>
+    </div>
+    <div class="progress-track">
+      <div
+        class="progress-fill"
+        id="stage-progress-fill"
+        style="width: 0%"
+      ></div>
+    </div>
+  </div>
+
+  <div id="stage-task-list" class="task-list"></div>
+
+  <div class="stage-evidence">
+    <label for="stage-evidence-file">دليل الإنجاز</label>
+    <input
+      type="file"
+      id="stage-evidence-file"
+      accept="image/*,.pdf,.txt,.zip"
+    />
+    <p id="stage-evidence-status" class="task-feedback" role="status">
+      لم يُرفق دليل بعد.
+    </p>
+  </div>
+
+  <div class="stage-footer">
+    <span id="stage-status">المرحلة مفتوحة</span>
+    <button
+      type="button"
+      class="primary-button"
+      id="approve-stage-button"
+      disabled
+    >
+      اعتماد الدليل وفتح المرحلة التالية
+    </button>
+  </div>
+</article>
+
+
+        <article class="panel daily-tasks" id="tasks">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">التركيز اليوم</p>
+              <h2>المهام اليومية</h2>
+            </div>
+            <span class="task-count" id="task-count">0 / 0</span>
+          </div>
+
+          <form class="task-form" id="task-form">
+            <label class="sr-only" for="task-input">اسم المهمة الجديدة</label>
+            <input
+              id="task-input"
+              name="task"
+              type="text"
+              maxlength="120"
+              placeholder="ما المهمة التي تريد إنجازها؟"
+              autocomplete="off"
+              required
+            />
+            <button class="primary-button task-add-button" type="submit">
+              + إضافة
+            </button>
+          </form>
+
+          <p class="task-feedback" id="task-feedback" role="status" aria-live="polite"></p>
+
+          <div class="task-list" id="task-list"></div>
+        </article>
+      </section>
+      
+<section class="panel backup-panel" id="backup">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">حماية تقدمك</p>
+      <h2>النسخ الاحتياطي</h2>
+    </div>
+    <span class="reward-symbol">◈</span>
+  </div>
+
+  <p class="backup-description">
+    احفظ مهامك ومواعيدك ومراحل تقدمك وملفات أدلتك في ملف واحد،
+    واستعدها عند الحاجة.
+  </p>
+
+  <div class="backup-actions">
+    <button class="primary-button" id="export-backup-button" type="button">
+      ↓ تصدير نسخة احتياطية
+    </button>
+
+    <label class="backup-file-label" for="import-backup-file">
+      اختيار ملف للاستعادة
+    </label>
+    <input
+      class="sr-only"
+      id="import-backup-file"
+      type="file"
+      accept=".json,application/json"
+    />
+  </div>
+
+  <p
+    class="backup-feedback"
+    id="backup-feedback"
+    role="status"
+    aria-live="polite"
+  ></p>
+</section>
+
+        
+<section class="panel rewards-panel" id="rewards">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">اعمل بذكاء، وكافئ نفسك</p>
+      <h2>نظام المكافآت</h2>
+    </div>
+    <span class="reward-symbol">✧</span>
+  </div>
+
+  <p class="backup-description">
+    حدّد ما تريد الحصول عليه، وكم سيكلفك، وما الذي يجب إنجازه لاستحقاقه.
+  </p>
+
+  <form class="task-form reward-form" id="reward-form">
+    <label class="sr-only" for="reward-title">اسم المكافأة</label>
+    <input
+      id="reward-title"
+      type="text"
+      maxlength="120"
+      placeholder="مثال: شراء هاتف جديد"
+      required
+    />
+
+    <label class="sr-only" for="reward-budget">الميزانية بالدينار الجزائري</label>
+    <input
+      id="reward-budget"
+      type="number"
+      min="0"
+      step="1"
+      placeholder="الميزانية بالدينار"
+      required
+    />
+
+    <label class="sr-only" for="reward-condition">شرط الاستحقاق</label>
+    <input
+      id="reward-condition"
+      type="text"
+      maxlength="240"
+      placeholder="مثال: إكمال المرحلة الثالثة"
+      required
+    />
+
+    <button class="primary-button" type="submit">
+      + إضافة مكافأة
+    </button>
+  </form>
+
+  <p id="reward-feedback" class="task-feedback" role="status" aria-live="polite"></p>
+
+  <div id="reward-summary" class="stats-grid">
+    <article class="stat-card">
+      <p>إجمالي المكافآت</p>
+      <strong id="reward-count">0</strong>
+    </article>
+    <article class="stat-card">
+      <p>المكافآت المحققة</p>
+      <strong id="reward-achieved-count">0</strong>
+    </article>
+    <article class="stat-card">
+      <p>إجمالي الميزانيات</p>
+      <strong id="reward-total-budget">0 دج</strong>
+    </article>
+  </div>
+
+  <div id="reward-list" class="task-list"></div>
+</section>
+
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">اعمل بذكاء، وكافئ نفسك</p>
+            <h2>المكافآت القادمة</h2>
+          </div>
+          <span class="reward-symbol">✧</span>
+        </div>
+        <div class="reward-placeholder">
+          <div class="reward-mini-icon">◇</div>
+          <div>
+            <strong>كل إنجاز يستحق التقدير</strong>
+            <p>ستتمكن من تحديد مكافآتك وشروط استحقاقها وميزانيتها.</p>
+          </div>
+        </div>
+      </section>
+      <section class="panel" id="achievements">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">تقدّمك موثّق</p>
+      <h2>سجل الإنجازات</h2>
+    </div>
+    <span class="reward-symbol">✓</span>
+  </div>
+
+  <p class="backup-description">
+    راجع المهام التي أنجزتها والمراحل التي أكملتها.
+  </p>
+
+  <div id="achievements-summary" class="stats-grid">
+    <article class="stat-card">
+      <p>المهام المكتملة</p>
+      <strong id="achievement-tasks-count">0</strong>
+    </article>
+    <article class="stat-card">
+      <p>المراحل المكتملة</p>
+      <strong id="achievement-stages-count">0</strong>
+    </article>
+  </div>
+
+  <div id="achievements-list" class="task-list"></div>
+</section>
+
+      <footer class="footer">
+        <span>ASCEND © 2026</span>
+        <span>ابنِ مستقبلك، خطوة بخطوة.</span>
+      </footer>
+    </main>
+  </div>
+`
+
+const dateElement = document.querySelector('#today-date')
+
+dateElement.textContent = new Intl.DateTimeFormat('ar-DZ', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+}).format(new Date())
+
+const taskForm = document.querySelector('#task-form')
+const taskInput = document.querySelector('#task-input')
+const taskList = document.querySelector('#task-list')
+const taskCount = document.querySelector('#task-count')
+const taskFeedback = document.querySelector('#task-feedback')
+const completedStat = document.querySelector('#completed-stat')
+const tasksStatNote = document.querySelector('#tasks-stat-note')
+const totalTasksStat = document.querySelector('#total-tasks-stat')
+
+
+function saveTasks() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
+    return true
+  } catch {
+    taskFeedback.textContent = 'تعذّر حفظ التغييرات في المتصفح.'
+    return false
+  }
+}
+
+function syncTaskWithStages(taskId, updates = null) {
+  const stages = getStages()
+  let changed = false
+
+  stages.forEach((stage) => {
+    const stageTask = stage.tasks.find((task) => task.id === taskId)
+
+    if (!stageTask) return
+
+    if (updates === null) {
+      stage.tasks = stage.tasks.filter((task) => task.id !== taskId)
+      changed = true
+      return
+    }
+
+    if (typeof updates.title === 'string') {
+      stageTask.title = updates.title
+      changed = true
+    }
+
+    if (typeof updates.completed === 'boolean') {
+      stageTask.completed = updates.completed
+      changed = true
+    }
+  })
+
+  // إذا كانت المهمة جديدة، أضفها إلى المرحلة الأولى.
+  if (updates && !stages.some((stage) =>
+    stage.tasks.some((task) => task.id === taskId)
+  )) {
+    const firstStage = stages[0]
+
+    if (firstStage && !firstStage.completed) {
+      firstStage.tasks.push({
+        id: taskId,
+        title: updates.title,
+        completed: Boolean(updates.completed),
+      })
+      changed = true
+    }
+  }
+
+  if (changed) saveStages(stages)
+}
+
+
+function renderTasks() {
+  taskList.replaceChildren()
+
+ 
+const dailyCompleted = tasks.filter((task) => task.completed).length
+const dailyTotal = tasks.length
+
+const scheduleTasks = getDailyTasks(getTodayKey())
+const scheduleCompleted = scheduleTasks.filter((task) => task.completed).length
+const scheduleTotal = scheduleTasks.length
+
+const completed = dailyCompleted + scheduleCompleted
+const total = dailyTotal + scheduleTotal
+const percentage = total === 0 ? 0 : Math.round((completed / total) * 100)
+
+  taskCount.textContent = `${dailyCompleted} / ${dailyTotal}`
+totalTasksStat.textContent = `إجمالي المهام اليوم: ${total} — المكتملة: ${completed} (${percentage}%)`
+  completedStat.innerHTML = `${completed} <small>مهمة</small>`
+tasksStatNote.textContent =
+  total === 0
+    ? 'ابدأ بأول إنجاز لك'
+    : `أنجزت ${completed} من ${total} مهمة في النظامين`
+
+
+  if (dailyTotal === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'empty-tasks'
+
+    const icon = document.createElement('span')
+    icon.className = 'empty-icon'
+    icon.textContent = '✓'
+
+
+    const title = document.createElement('strong')
+    title.textContent = 'مساحة إنجازاتك جاهزة'
+
+    const description = document.createElement('p')
+    description.textContent = 'أضف أول مهمة وابدأ التقدم.'
+
+    empty.append(icon, title, description)
+    taskList.append(empty)
+    return
+  }
+
+  tasks.forEach((task) => {
+    const row = document.createElement('div')
+    row.className = 'task-row'
+    if (task.completed) row.classList.add('is-completed')
+
+    const label = document.createElement('label')
+    label.className = 'task-label'
+
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = task.completed
+    checkbox.setAttribute('aria-label', `إنجاز المهمة: ${task.title}`)
+
+    
+checkbox.addEventListener('change', () => {
+ task.completed = checkbox.checked
+ task.completedAt = task.completed ? new Date().toISOString() : null 
+
+  if (saveTasks()) {
+    syncTaskWithStages(task.id, {
+      title: task.title,
+      completed: task.completed,
+    })
+
+    renderTasks()
+    renderStages()
+    renderAchievements()
+  }
+})
+
+
+    const title = document.createElement('span')
+    title.className = 'task-title'
+    title.textContent = task.title
+
+    label.append(checkbox, title)
+
+    const deleteButton = document.createElement('button')
+    deleteButton.type = 'button'
+    deleteButton.className = 'task-delete'
+    deleteButton.textContent = 'حذف'
+    deleteButton.setAttribute('aria-label', `حذف المهمة: ${task.title}`)
+
+    
+deleteButton.addEventListener('click', () => {
+  tasks = tasks.filter((item) => item.id !== task.id)
+
+  if (!saveTasks()) {
+    tasks = loadTasks()
+    renderTasks()
+    return
+  }
+
+  syncTaskWithStages(task.id, null)
+
+  taskFeedback.textContent = 'تم حذف المهمة.'
+  renderTasks()
+  renderStages()
+})
+
+
+    row.append(label, deleteButton)
+    taskList.append(row)
+  })
+}
+
+taskForm.addEventListener('submit', (event) => {
+  event.preventDefault()
+
+  const title = taskInput.value.trim()
+
+  if (!title) {
+    taskFeedback.textContent = 'اكتب اسم المهمة أولًا.'
+    taskInput.focus()
+    return
+  }
+
+  
+  const newTask = {
+  id: crypto.randomUUID(),
+  title,
+  completed: false,
+  createdAt: new Date().toISOString(),
+  completedAt: null,
+}
+
+tasks.push(newTask)
+
+
+  if (!saveTasks()) {
+    tasks.pop()
+    return
+  }
+
+  
+syncTaskWithStages(newTask.id, {
+  title: newTask.title,
+  completed: newTask.completed,
+})
+
+taskForm.reset()
+taskFeedback.textContent = 'تمت إضافة المهمة وحفظها.'
+renderTasks()
+renderStages()
+renderAchievements()
+})
+
+renderTasks()
+
+const scheduleDate = document.querySelector('#schedule-date')
+const scheduleForm = document.querySelector('#schedule-form')
+const scheduleTitle = document.querySelector('#schedule-task-title')
+const scheduleStart = document.querySelector('#schedule-start')
+const scheduleEnd = document.querySelector('#schedule-end')
+const scheduleTimeline = document.querySelector('#schedule-timeline')
+const scheduleFeedback = document.querySelector('#schedule-feedback')
+const scheduleTaskCount = document.querySelector('#schedule-task-count')
+const schedulePlannedTime = document.querySelector('#schedule-planned-time')
+const scheduleCompletion = document.querySelector('#schedule-completion')
+const scheduleRemainingCount = document.querySelector('#schedule-remaining-count')
+const scheduleRemainingTime = document.querySelector('#schedule-remaining-time')
+
+function getTodayKey() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+scheduleDate.value = getTodayKey()
+
+function formatDuration(minutes) {
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+
+  if (hours && remainingMinutes) {
+    return `${hours} س ${remainingMinutes} د`
+  }
+
+  if (hours) return `${hours} ساعة`
+  return `${remainingMinutes} دقيقة`
+}
+
+
+function getCurrentTimePosition(tasks) {
+  const now = new Date()
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+
+  const currentTask = tasks.find((task) => {
+    const start =
+      Number(task.start.slice(0, 2)) * 60 +
+      Number(task.start.slice(3, 5))
+
+    const end =
+      Number(task.end.slice(0, 2)) * 60 +
+      Number(task.end.slice(3, 5))
+
+    return currentMinutes >= start && currentMinutes < end
+  })
+
+  return {
+    currentMinutes,
+    currentTaskId: currentTask?.id ?? null,
+  }
+}
+
+
+function renderSchedule() {
+  const date = scheduleDate.value
+  const tasks = getDailyTasks(date)
+  const stats = getDailyScheduleStats(date)
+  const commitmentDaysStat = document.querySelector(
+  '#commitment-days-stat',
+)
+
+if (commitmentDaysStat) {
+  commitmentDaysStat.innerHTML =
+    `${getDailyCommitmentStats()} <small>يوم</small>`
+} 
+  const pendingTasks = tasks.filter((task) => !task.completed)
+
+const remainingMinutes = pendingTasks.reduce((total, task) => {
+  const start =
+    Number(task.start.slice(0, 2)) * 60 +
+    Number(task.start.slice(3, 5))
+
+  const end =
+    Number(task.end.slice(0, 2)) * 60 +
+    Number(task.end.slice(3, 5))
+
+  return total + (end - start)
+}, 0)
+  const currentPosition = getCurrentTimePosition(tasks)
+
+  scheduleTaskCount.textContent = stats.totalTasks
+  schedulePlannedTime.textContent = formatDuration(stats.plannedMinutes)
+  scheduleCompletion.textContent = `${stats.completionRate}%`
+  scheduleRemainingCount.textContent = pendingTasks.length
+scheduleRemainingTime.textContent = formatDuration(remainingMinutes)
+
+const progressLabel = document.querySelector('#daily-progress-label')
+const progressTrack = document.querySelector('#daily-progress-track')
+const progressFill = document.querySelector('#daily-progress-fill')
+
+progressLabel.textContent = `${stats.completionRate}%`
+progressTrack.setAttribute('aria-valuenow', stats.completionRate)
+progressFill.style.width = `${stats.completionRate}%`
+
+  scheduleTimeline.replaceChildren()
+
+  if (tasks.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'empty-tasks'
+
+    const title = document.createElement('strong')
+    title.textContent = 'لا توجد مهام في هذا اليوم'
+
+    const description = document.createElement('p')
+    description.textContent = 'أضف مهمتك الأولى وحدد وقت بدايتها ونهايتها.'
+
+    empty.append(title, description)
+    scheduleTimeline.append(empty)
+    return
+  }
+
+  tasks.forEach((task) => {
+    const row = document.createElement('article')
+    row.className = 'schedule-item'
+
+    if (task.completed) row.classList.add('is-completed')
+      if (task.id === currentPosition.currentTaskId && !task.completed) {
+  row.classList.add('is-current')
+}
+
+    const time = document.createElement('div')
+    time.className = 'schedule-time'
+
+    const start = document.createElement('strong')
+    start.textContent = task.start
+
+    const separator = document.createElement('span')
+    separator.textContent = '↓'
+
+    const end = document.createElement('span')
+    end.textContent = task.end
+
+    time.append(start, separator, end)
+
+    const marker = document.createElement('span')
+    marker.className = 'schedule-marker'
+    marker.setAttribute('aria-hidden', 'true')
+
+    const details = document.createElement('div')
+    details.className = 'schedule-details'
+
+    const title = document.createElement('strong')
+    title.className = 'schedule-title'
+    title.textContent = task.title
+    if (task.id === currentPosition.currentTaskId && !task.completed) {
+  const badge = document.createElement('span')
+  badge.className = 'current-task-badge'
+  badge.textContent = 'جارية الآن'
+  details.append(badge)
+}
+
+    const duration = document.createElement('span')
+    duration.className = 'schedule-duration'
+
+    const minutes =
+      Number(task.end.slice(0, 2)) * 60 +
+      Number(task.end.slice(3, 5)) -
+      Number(task.start.slice(0, 2)) * 60 -
+      Number(task.start.slice(3, 5))
+
+    duration.textContent = formatDuration(minutes)
+
+    details.append(title, duration)
+
+    const actions = document.createElement('div')
+    actions.className = 'schedule-actions'
+
+    const completeLabel = document.createElement('label')
+    completeLabel.className = 'schedule-check'
+
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = task.completed
+    checkbox.setAttribute('aria-label', `إنجاز ${task.title}`)
+
+    const checkText = document.createElement('span')
+    checkText.textContent = 'تم'
+
+    checkbox.addEventListener('change', () => {
+      try {
+        setDailyTaskCompleted(task.id, checkbox.checked, date)
+        scheduleFeedback.textContent = checkbox.checked
+          ? 'أُنجزت المهمة بنجاح.'
+          : 'أُعيد فتح المهمة.'
+        renderSchedule()
+      } catch (error) {
+        scheduleFeedback.textContent = error.message
+      }
+    })
+
+    completeLabel.append(checkbox, checkText)
+
+    const deleteButton = document.createElement('button')
+    deleteButton.type = 'button'
+    deleteButton.className = 'task-delete'
+    deleteButton.textContent = 'حذف'
+    deleteButton.setAttribute('aria-label', `حذف ${task.title}`)
+
+    deleteButton.addEventListener('click', () => {
+      try {
+        deleteDailyTask(task.id, date)
+        scheduleFeedback.textContent = 'تم حذف المهمة.'
+        renderSchedule()
+      } catch (error) {
+        scheduleFeedback.textContent = error.message
+      }
+    })
+
+    actions.append(completeLabel, deleteButton)
+    row.append(time, marker, details, actions)
+    scheduleTimeline.append(row)
+  })
+}
+
+scheduleForm.addEventListener('submit', (event) => {
+  event.preventDefault()
+
+  try {
+    addDailyTask({
+      date: scheduleDate.value,
+      title: scheduleTitle.value,
+      start: scheduleStart.value,
+      end: scheduleEnd.value,
+    })
+
+    scheduleFeedback.textContent = 'تمت إضافة المهمة وحفظها.'
+    scheduleTitle.value = ''
+    renderSchedule()
+    scheduleTitle.focus()
+  } catch (error) {
+    scheduleFeedback.textContent = error.message
+  }
+})
+
+scheduleDate.addEventListener('change', () => {
+  scheduleFeedback.textContent = ''
+  renderSchedule()
+})
+
+renderSchedule()
+
+
+let scheduleRefreshTimer = null
+
+function startScheduleAutoRefresh() {
+  if (scheduleRefreshTimer !== null) {
+    clearInterval(scheduleRefreshTimer)
+  }
+
+  scheduleRefreshTimer = setInterval(() => {
+    renderSchedule()
+  }, 60 * 1000)
+}
+
+startScheduleAutoRefresh()
+
+const stageTitle = document.querySelector('#stage-title')
+const stageNumber = document.querySelector('#stage-number')
+const stageDescription = document.querySelector('#stage-description')
+const stageTaskList = document.querySelector('#stage-task-list')
+const stageProgressPercent = document.querySelector('#stage-progress-percent')
+const stageProgressFill = document.querySelector('#stage-progress-fill')
+const stageEvidenceFile = document.querySelector('#stage-evidence-file')
+const stageEvidenceStatus = document.querySelector('#stage-evidence-status')
+const stageStatus = document.querySelector('#stage-status')
+const approveStageButton = document.querySelector('#approve-stage-button')
+
+let selectedStageId = null
+
+function renderStages() {
+  let stages = getStages()
+
+    const completedStagesCount = stages.filter(
+    (stage) => stage.completed,
+  ).length
+
+  const completedStagesStat = document.querySelector(
+    '#completed-stages-stat',
+  )
+
+  if (completedStagesStat) {
+    completedStagesStat.innerHTML =
+      `${completedStagesCount} <small>مرحلة</small>`
+  }
+
+  const currentIndex = stages.findIndex(
+    (stage) => stage.unlocked && !stage.completed,
+  )
+
+  if (currentIndex === -1) {
+    stageTitle.textContent = 'اكتملت جميع المراحل'
+    stageNumber.textContent = '✓'
+    stageDescription.textContent = 'أحسنت، لقد أنهيت جميع المراحل المتاحة.'
+    stageTaskList.replaceChildren()
+    stageProgressPercent.textContent = '100%'
+    stageProgressFill.style.width = '100%'
+    stageStatus.textContent = 'جميع المراحل مكتملة'
+    stageEvidenceStatus.textContent = 'اكتملت الرحلة الحالية.'
+    stageEvidenceFile.disabled = true
+    approveStageButton.disabled = true
+    return
+  }
+
+  let stage = stages[currentIndex]
+  selectedStageId = stage.id
+
+  // إذا كانت المرحلة بلا مهام، استخدم المهام اليومية لإنشاء قائمة أولية.
+  if (stage.tasks.length === 0) {
+    const dailyTasks = loadTasks()
+
+    if (dailyTasks.length > 0) {
+      stage.tasks = dailyTasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        completed: task.completed,
+      }))
+
+      saveStages(stages)
+    }
+  }
+
+  const completedCount = stage.tasks.filter(
+    (task) => task.completed,
+  ).length
+
+  const percentage = stage.tasks.length
+    ? Math.round((completedCount / stage.tasks.length) * 100)
+    : 0
+
+  stageTitle.textContent = stage.title
+  stageNumber.textContent = String(currentIndex + 1).padStart(2, '0')
+  stageDescription.textContent = stage.description
+  stageProgressPercent.textContent = `${percentage}%`
+  stageProgressFill.style.width = `${percentage}%`
+
+  stageTaskList.replaceChildren()
+
+  if (stage.tasks.length === 0) {
+    const message = document.createElement('p')
+    message.textContent =
+      'أضف مهمة واحدة على الأقل في قسم المهام اليومية، ثم أعد تحميل الصفحة.'
+    stageTaskList.append(message)
+  }
+
+  stage.tasks.forEach((task) => {
+    const label = document.createElement('label')
+    label.className = 'task-label'
+
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = task.completed
+    checkbox.setAttribute('aria-label', `إنجاز ${task.title}`)
+
+    const title = document.createElement('span')
+    title.className = 'task-title'
+    title.textContent = task.title
+
+    
+function syncTaskWithStages(taskId, updates = null) {
+  const stages = getStages()
+  let changed = false
+
+  stages.forEach((stage) => {
+    // لا نغيّر سجل أي مرحلة مكتملة.
+    if (stage.completed) return
+
+    const taskIndex = stage.tasks.findIndex(
+      (task) => task.id === taskId,
+    )
+
+    if (taskIndex === -1) return
+
+    if (updates === null) {
+      stage.tasks.splice(taskIndex, 1)
+      changed = true
+      return
+    }
+
+    const stageTask = stage.tasks[taskIndex]
+
+    if (typeof updates.title === 'string') {
+      stageTask.title = updates.title
+      changed = true
+    }
+
+    if (typeof updates.completed === 'boolean') {
+      stageTask.completed = updates.completed
+      changed = true
+    }
+  })
+
+  // أضف المهمة إلى المرحلة الأولى فقط إذا كانت غير مكتملة.
+  const firstStage = stages[0]
+
+  if (
+    updates &&
+    firstStage &&
+    !firstStage.completed &&
+    !firstStage.tasks.some((task) => task.id === taskId)
+  ) {
+    firstStage.tasks.push({
+      id: taskId,
+      title: updates.title,
+      completed: Boolean(updates.completed),
+    })
+
+    changed = true
+  }
+
+  if (changed) {
+    saveStages(stages)
+  }
+}
+
+
+    label.append(checkbox, title)
+    stageTaskList.append(label)
+  })
+
+  stageEvidenceFile.disabled = stage.completed
+  stageEvidenceFile.value = ''
+
+  if (stage.evidence) {
+    stageEvidenceStatus.textContent =
+      `الدليل المرفق: ${stage.evidence.name}`
+  } else {
+    stageEvidenceStatus.textContent = 'لم يُرفق دليل بعد.'
+  }
+
+  stageStatus.textContent = stage.completed
+    ? 'المرحلة مكتملة'
+    : stage.unlocked
+      ? 'المرحلة مفتوحة'
+      : 'المرحلة مقفلة'
+
+  approveStageButton.disabled =
+    stage.completed ||
+    stage.tasks.length === 0 ||
+    !stage.tasks.every((task) => task.completed) ||
+    !stage.evidence
+
+  approveStageButton.textContent = stage.completed
+    ? 'تم اعتماد المرحلة'
+    : 'اعتماد الدليل وفتح المرحلة التالية'
+}
+
+stageEvidenceFile.addEventListener('change', async () => {
+  const file = stageEvidenceFile.files?.[0]
+
+  if (!file || !selectedStageId) return
+
+  if (file.size > 25 * 1024 * 1024) {
+    stageEvidenceStatus.textContent =
+      'حجم الملف يتجاوز الحد المسموح به (25 ميغابايت).'
+    stageEvidenceFile.value = ''
+    return
+  }
+
+  stageEvidenceStatus.textContent = 'جارٍ حفظ الدليل...'
+  stageEvidenceFile.disabled = true
+
+  try {
+    const evidence = await saveEvidenceFile(file)
+    const stages = getStages()
+    const stage = stages.find((item) => item.id === selectedStageId)
+
+    if (!stage) {
+      stageEvidenceStatus.textContent = 'لم يتم العثور على المرحلة.'
+      return
+    }
+
+    stage.evidence = evidence
+    saveStages(stages)
+    renderStages()
+    stageEvidenceStatus.textContent = `تم حفظ الدليل: ${file.name}`
+  } catch (error) {
+    stageEvidenceStatus.textContent =
+      `تعذّر حفظ الدليل: ${error.message || 'خطأ غير معروف'}`
+  } finally {
+    stageEvidenceFile.disabled = false
+  }
+})
+
+approveStageButton.addEventListener('click', () => {
+  if (!selectedStageId) return
+
+  try {
+    approveStageEvidence(selectedStageId)
+    renderStages()
+    renderAchievements()
+    stageEvidenceStatus.textContent =
+      'تم اعتماد الدليل وفتح المرحلة التالية.'
+  } catch (error) {
+    stageEvidenceStatus.textContent = error.message
+  }
+})
+
+renderStages()
+function renderAchievements() {
+  const list = document.querySelector('#achievements-list')
+  const tasksCount = document.querySelector('#achievement-tasks-count')
+  const stagesCount = document.querySelector('#achievement-stages-count')
+
+  if (!list || !tasksCount || !stagesCount) return
+
+  const completedTasks = tasks.filter((task) => task.completed)
+  const completedStages = getStages().filter((stage) => stage.completed)
+
+  tasksCount.textContent = String(completedTasks.length)
+  stagesCount.textContent = String(completedStages.length)
+
+  list.replaceChildren()
+
+  const achievements = [
+    ...completedTasks.map((task) => ({
+      title: task.title,
+      type: 'مهمة مكتملة',
+      date: task.completedAt,
+    })),
+    ...completedStages.map((stage) => ({
+      title: stage.title,
+      type: 'مرحلة مكتملة',
+      date: stage.completedAt,
+    })),
+  ]
+
+  achievements.sort((a, b) => {
+    const dateA = a.date ? new Date(a.date).getTime() : 0
+    const dateB = b.date ? new Date(b.date).getTime() : 0
+    return dateB - dateA
+  })
+
+  if (achievements.length === 0) {
+    const empty = document.createElement('p')
+    empty.className = 'empty-tasks'
+    empty.textContent = 'لم تسجل إنجازات بعد. ابدأ بإكمال أول مهمة!'
+    list.append(empty)
+    return
+  }
+
+  achievements.forEach((achievement) => {
+    const row = document.createElement('article')
+    row.className = 'task-row'
+
+    const content = document.createElement('div')
+    content.className = 'task-label'
+
+    const title = document.createElement('strong')
+    title.className = 'task-title'
+    title.textContent = achievement.title
+
+    const details = document.createElement('p')
+    details.className = 'stat-note'
+
+    if (achievement.date && !Number.isNaN(Date.parse(achievement.date))) {
+      details.textContent =
+        `${achievement.type} — ${new Intl.DateTimeFormat('ar-DZ', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(new Date(achievement.date))}`
+    } else {
+      details.textContent = `${achievement.type} — تاريخ الإنجاز غير متوفر`
+    }
+
+    content.append(title, details)
+    row.append(content)
+    list.append(row)
+  })
+}
+
+const exportBackupButton = document.querySelector('#export-backup-button')
+const importBackupFile = document.querySelector('#import-backup-file')
+const backupFeedback = document.querySelector('#backup-feedback')
+
+exportBackupButton.addEventListener('click', async () => {
+  exportBackupButton.disabled = true
+  backupFeedback.textContent = 'جارٍ تجهيز النسخة الاحتياطية...'
+
+  try {
+    const result = await exportBackup()
+
+    backupFeedback.textContent =
+      `تم تصدير النسخة بنجاح. عدد ملفات الأدلة: ${result.evidenceCount}.`
+  } catch (error) {
+    backupFeedback.textContent =
+      `تعذّر إنشاء النسخة: ${error.message || 'خطأ غير معروف.'}`
+  } finally {
+    exportBackupButton.disabled = false
+  }
+})
+
+importBackupFile.addEventListener('change', async () => {
+  const file = importBackupFile.files?.[0]
+  if (!file) return
+
+  const confirmed = window.confirm(
+    'تحذير: ستُستبدل بيانات ASCEND الحالية بالبيانات الموجودة في النسخة الاحتياطية. تأكد من تصدير نسخة حديثة من بياناتك الحالية قبل المتابعة. هل تريد الاستمرار؟',
+  )
+
+  if (!confirmed) {
+    importBackupFile.value = ''
+    return
+  }
+
+  importBackupFile.disabled = true
+  backupFeedback.textContent = 'جارٍ التحقق من النسخة واستعادتها...'
+
+  try {
+    const result = await importBackup(file)
+
+    backupFeedback.textContent =
+      `تمت الاستعادة. المهام: ${result.taskCount}، المراحل: ${result.stageCount}، ملفات الأدلة: ${result.evidenceCount}. سيتم تحديث التطبيق.`
+
+    window.setTimeout(() => window.location.reload(), 1200)
+  } catch (error) {
+    backupFeedback.textContent =
+      `تعذّرت الاستعادة: ${error.message || 'خطأ غير معروف.'}`
+  } finally {
+    importBackupFile.disabled = false
+    importBackupFile.value = ''
+  }
+})
+
+const REWARDS_KEY = 'ascend-rewards'
+
+const rewardForm = document.querySelector('#reward-form')
+const rewardTitle = document.querySelector('#reward-title')
+const rewardBudget = document.querySelector('#reward-budget')
+const rewardCondition = document.querySelector('#reward-condition')
+const rewardFeedback = document.querySelector('#reward-feedback')
+const rewardList = document.querySelector('#reward-list')
+const rewardCount = document.querySelector('#reward-count')
+const rewardAchievedCount = document.querySelector('#reward-achieved-count')
+const rewardTotalBudget = document.querySelector('#reward-total-budget')
+
+function loadRewards() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REWARDS_KEY) || '[]')
+    return Array.isArray(saved) ? saved.filter(
+      (reward) =>
+        reward &&
+        typeof reward.id === 'string' &&
+        typeof reward.title === 'string' &&
+        typeof reward.condition === 'string' &&
+        Number.isFinite(reward.budget) &&
+        typeof reward.achieved === 'boolean',
+    ) : []
+  } catch {
+    return []
+  }
+}
+
+let rewards = loadRewards()
+
+function saveRewards() {
+  try {
+    localStorage.setItem(REWARDS_KEY, JSON.stringify(rewards))
+    return true
+  } catch {
+    rewardFeedback.textContent = 'تعذّر حفظ المكافآت في المتصفح.'
+    return false
+  }
+}
+
+function renderRewards() {
+  rewardCount.textContent = String(rewards.length)
+
+  const achievedRewards = rewards.filter(
+  (reward) => reward.achieved,
+).length
+
+rewardAchievedCount.textContent = String(achievedRewards)
+
+const achievedRewardsStat = document.querySelector(
+  '#achieved-rewards-stat',
+)
+
+if (achievedRewardsStat) {
+  achievedRewardsStat.innerHTML =
+    `${achievedRewards} <small>مكافأة</small>`
+}
+
+  const totalBudget = rewards.reduce(
+    (sum, reward) => sum + reward.budget,
+    0,
+  )
+
+  rewardTotalBudget.textContent =
+    `${new Intl.NumberFormat('ar-DZ').format(totalBudget)} دج`
+
+  rewardList.replaceChildren()
+
+  if (rewards.length === 0) {
+    const emptyMessage = document.createElement('p')
+    emptyMessage.className = 'task-empty'
+    emptyMessage.textContent = 'لم تضف أي مكافأة بعد. ابدأ بتحديد أول مكافأة تستحقها.'
+    rewardList.append(emptyMessage)
+    return
+  }
+
+  rewards.forEach((reward) => {
+    const card = document.createElement('article')
+    card.className = 'task-item reward-item'
+
+    const details = document.createElement('div')
+    details.className = 'task-item-content'
+
+    const title = document.createElement('strong')
+    title.textContent = reward.title
+
+    const condition = document.createElement('p')
+    condition.textContent = `شرط الاستحقاق: ${reward.condition}`
+
+    const budget = document.createElement('p')
+    budget.textContent =
+      `الميزانية: ${new Intl.NumberFormat('ar-DZ').format(reward.budget)} دج`
+
+    const status = document.createElement('p')
+    status.className = 'stat-note'
+    status.textContent = reward.achieved
+      ? '✓ تم تحقيق المكافأة'
+      : '◷ لم تتحقق بعد'
+
+    details.append(title, condition, budget, status)
+
+    const actions = document.createElement('div')
+    actions.className = 'reward-actions'
+
+    const toggleButton = document.createElement('button')
+    toggleButton.type = 'button'
+    toggleButton.className = 'primary-button'
+    toggleButton.textContent = reward.achieved
+      ? 'إلغاء التحقيق'
+      : 'تحقيق المكافأة'
+
+    toggleButton.addEventListener('click', () => {
+      const previous = reward.achieved
+      reward.achieved = !previous
+
+      if (!saveRewards()) {
+        reward.achieved = previous
+        return
+      }
+
+      rewardFeedback.textContent = reward.achieved
+        ? 'مبارك! تم تسجيل تحقيق المكافأة.'
+        : 'تمت إعادة المكافأة إلى قائمة غير المحققة.'
+
+      renderRewards()
+    })
+
+    const deleteButton = document.createElement('button')
+    deleteButton.type = 'button'
+    deleteButton.className = 'task-delete'
+    deleteButton.textContent = 'حذف'
+
+    deleteButton.addEventListener('click', () => {
+      if (!window.confirm(`هل تريد حذف المكافأة «${reward.title}»؟`)) {
+        return
+      }
+
+      const previousRewards = rewards
+      rewards = rewards.filter((item) => item.id !== reward.id)
+
+      if (!saveRewards()) {
+        rewards = previousRewards
+        return
+      }
+
+      rewardFeedback.textContent = 'تم حذف المكافأة.'
+      renderRewards()
+    })
+
+    actions.append(toggleButton, deleteButton)
+    card.append(details, actions)
+    rewardList.append(card)
+  })
+}
+
+rewardForm.addEventListener('submit', (event) => {
+  event.preventDefault()
+
+  const title = rewardTitle.value.trim()
+  const condition = rewardCondition.value.trim()
+  const budget = Number(rewardBudget.value)
+
+  if (!title || !condition || !Number.isSafeInteger(budget) || budget < 0) {
+    rewardFeedback.textContent = 'أدخل اسم المكافأة وشرطها وميزانية صحيحة.'
+    return
+  }
+
+  const reward = {
+    id: crypto.randomUUID(),
+    title,
+    condition,
+    budget,
+    achieved: false,
+    createdAt: new Date().toISOString(),
+  }
+
+  rewards.push(reward)
+
+  if (!saveRewards()) {
+    rewards.pop()
+    return
+  }
+
+  rewardForm.reset()
+  rewardFeedback.textContent = 'تمت إضافة المكافأة وحفظها.'
+  renderRewards()
+})
+
+renderRewards()
+renderAchievements()
+
